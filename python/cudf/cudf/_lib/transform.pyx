@@ -127,6 +127,46 @@ def transform(Column input, op):
 
     return Column.from_unique_ptr(move(c_output))
 
+def masked_binary_op(Column A, Column B, op, Column output_column, Column output_mask):
+    cdef column_view A_view = A.view()
+    cdef column_view B_view = B.view()
+
+    cdef string c_str
+    cdef type_id c_tid
+    cdef data_type c_dtype
+
+    if A.dtype != np.dtype('int64') or B.dtype != np.dtype('int64'):
+        raise TypeError('int64 please')
+    
+ 
+    from cudf.core.udf import compile_udf
+    c_str = compile_udf(op).encode('UTF-8')
+
+    c_tid = <type_id> (
+        <underlying_type_t_type_id> np_to_cudf_types[np.dtype('int64')]
+    )
+    c_dtype = data_type(c_tid)
+
+    cdef column_view outcol_view = output_column.view()
+    cdef column_view outmsk_view = output_mask.view()
+
+    with nogil:
+        c_output = move(libcudf_transform.masked_binary_op(
+            A_view,
+            B_view,
+            c_str,
+            c_dtype,
+            outcol_view,
+            outmsk_view
+        ))
+
+    #return Column.from_unique_ptr(move(c_output))
+
+    output_mask_real = bools_to_mask(output_mask)
+    output_column = output_column.set_mask(output_mask_real)
+
+    return output_column
+
 
 def table_encode(Table input):
     cdef table_view c_input = input.data_view()
