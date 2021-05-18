@@ -4,6 +4,7 @@ import pytest
 from numba import types
 from numba.cuda import compile_ptx
 
+from cudf.core.udf.typing import MaskedType
 
 arith_ops = (
     operator.add,
@@ -26,13 +27,13 @@ number_types = (
     types.uint16,
     types.uint32,
     types.uint64,
-    types.complex64,
-    types.complex128,
 )
+
+number_ids = tuple(str(t) for t in number_types)
 
 
 @pytest.mark.parametrize('op', arith_ops)
-@pytest.mark.parametrize('ty', number_types, ids=[str(t) for t in number_types])
+@pytest.mark.parametrize('ty', number_types, ids=number_ids)
 @pytest.mark.parametrize('constant', [1, 1.5])
 def test_arith_masked_vs_constant(op, ty, constant):
 
@@ -40,4 +41,16 @@ def test_arith_masked_vs_constant(op, ty, constant):
         return op(x, constant)
 
     cc = (7, 5)
-    ptx, resty = compile_ptx(func, (ty,), cc=cc)
+    ptx, resty = compile_ptx(func, (MaskedType(ty),), cc=cc)
+
+
+#@pytest.mark.parametrize('op', arith_ops)
+#@pytest.mark.parametrize('ty1', number_types, ids=number_ids)
+#@pytest.mark.parametrize('ty2', number_types, ids=number_ids)
+#def test_arith_masked_ops(op, ty, constant):
+#
+#    def func(x):
+#        return op(x, constant)
+#
+#    cc = (7, 5)
+#    ptx, resty = compile_ptx(func, (ty,), cc=cc)
