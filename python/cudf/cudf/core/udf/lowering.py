@@ -42,7 +42,6 @@ def make_arithmetic_op(op):
         '''
         Implement `MaskedType` + `MaskedType`
         '''
-
         masked_type_1, masked_type_2 = sig.args # MaskedType(...), MaskedType(...)
         masked_return_type = sig.return_type # MaskedType(...)
 
@@ -173,6 +172,7 @@ def masked_scalar_is_null_impl(context, builder, sig, args):
 
     return builder.load(result)
 
+
 # To handle the unification, we need to support casting from any type to an
 # extension type. The cast implementation takes the value passed in and returns
 # an extension struct wrapping that value.
@@ -184,9 +184,23 @@ def cast_primitive_to_masked(context, builder, fromty, toty, val):
     ext.valid = context.get_constant(types.boolean, 1)
     return ext._getvalue()
 
+
+@cuda_impl_registry.lower_cast(MaskedType, MaskedType)
+def cast_masked_to_masked(context, builder, fromty, toty, val):
+    operand = cgutils.create_struct_proxy(fromty)(context, builder, value=val)
+    casted = context.cast(builder, operand.value, fromty.value_type,
+                          toty.value_type)
+    ext = cgutils.create_struct_proxy(toty)(context, builder)
+    ext.value = casted
+    ext.valid = operand.valid
+    return ext._getvalue()
+
+
 @cuda_impl_registry.lower_cast(NAType, MaskedType)
 def cast_na_to_masked(context, builder, fromty, toty, val):
     result = cgutils.create_struct_proxy(toty)(context, builder)
     result.valid = context.get_constant(types.boolean, 0)
 
     return result._getvalue()
+
+

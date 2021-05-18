@@ -40,6 +40,12 @@ class MaskedType(types.Type):
         '''
         return self.__repr__().__hash__()
 
+    def __eq__(self, other):
+        if not isinstance(other, MaskedType):
+            return False
+
+        return self.value_type == other.value_type
+
     def unify(self, context, other):
         '''
         Logic for sorting out what to do when the UDF conditionally
@@ -74,6 +80,10 @@ class MaskedType(types.Type):
         # MaskedType with the original type as its value_type
         if isinstance(other, NAType):
             return MaskedType(self.value_type)
+
+        #if isinstance(other, MaskedType):
+        #    return MaskedType(context.unify_pairs(self.value_type,
+        #                                          other.value_type))
 
         # if we have MaskedType and Literal, the output should be
         # determined from the MaskedType.value_type (which is a 
