@@ -15,6 +15,8 @@
  */
 
 #include <jit_preprocessed_files/transform/jit/kernel.cu.jit.hpp>
+#include <jit_preprocessed_files/transform/jit/masked_udf_kernel.cu.jit.hpp>
+
 
 #include <jit/cache.hpp>
 #include <jit/parser.hpp>
@@ -27,6 +29,7 @@
 #include <cudf/null_mask.hpp>
 #include <cudf/utilities/traits.hpp>
 #include <cudf/utilities/type_dispatcher.hpp>
+#include <cudf/table/table_view.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
 
@@ -63,6 +66,75 @@ void unary_operation(mutable_column_view output,
              cudf::jit::get_data_ptr(input));
 }
 
+void generalized_operation(table_view data_view,
+                           std::string const& binary_udf, 
+                           data_type output_type, 
+                           column_view const& outcol_view,
+                           column_view const& outmsk_view,
+                           rmm::mr::device_memory_resource* mr)
+{
+
+  std::vector<std::string> template_types(
+    // A ptr, mask ptr, and offset for each column
+    // plus one for the type of the output column
+    (data_view.num_columns() * 3) + 1
+  );
+  template_types[0] = cudf::jit::get_type_name(outcol_view.type());
+  for (int i = 0; i < data_view.num_columns(); i++) {
+    int offset = (i * 3) + 1;
+    template_types[offset] = cudf::jit::get_type_name(data_view.column(i).type()) + "*";
+    template_types[offset + 1] = "uint32_t*"; 
+    template_types[offset + 2] = "int64_t";
+  }
+
+  std::string generic_kernel_name = 
+  jitify2::reflection::Template("cudf::transformation::jit::generic_udf_kernel")
+    .instantiate(template_types);
+
+  std::string generic_cuda_source = cudf::jit::parse_single_function_ptx(
+                     binary_udf, "GENERIC_OP", cudf::jit::get_type_name(output_type), {0});
+
+  int n_cols = data_view.num_columns();
+  std::vector<void*> results((n_cols * 3) + 3);
+
+  cudf::size_type size = outcol_view.size();
+  const void* outcol_ptr = cudf::jit::get_data_ptr(outcol_view);
+  const void* outmsk_ptr = cudf::jit::get_data_ptr(outmsk_view);
+
+  results[0] = &size;
+  results[1] = &outcol_ptr;
+  results[2] = &outmsk_ptr;
+  column_view col;
+
+  std::vector<const void*> data_ptrs(n_cols);
+  std::vector<cudf::bitmask_type const*> mask_ptrs(n_cols);
+  std::vector<int64_t> offsets(n_cols);
+
+  for (int i = 0; i < n_cols; i++) {
+    col = data_view.column(i);
+    data_ptrs[i] = cudf::jit::get_data_ptr(col);
+    mask_ptrs[i] = col.null_mask();
+    offsets[i] = col.offset();
+  }
+
+  int idx = 3;
+  for (int i = 0; i < n_cols; i++) {
+    results[idx] = &data_ptrs[i];
+    results[idx + 1] = &mask_ptrs[i];
+    results[idx + 2] = &offsets[i];
+    idx += 3;
+  }
+  
+
+  rmm::cuda_stream_view generic_stream;
+  cudf::jit::get_program_cache(*transform_jit_masked_udf_kernel_cu_jit)
+    .get_kernel(
+      generic_kernel_name, {}, {{"transform/jit/operation-udf.hpp", generic_cuda_source}}, {"-arch=sm_."})  //
+    ->configure_1d_max_occupancy(0, 0, 0, generic_stream.value())                                   //
+    ->launch(results.data());
+
+}
+
 }  // namespace jit
 }  // namespace transformation
 
@@ -89,6 +161,24 @@ std::unique_ptr<column> transform(column_view const& input,
   return output;
 }
 
+std::unique_ptr<column> generalized_masked_op(table_view data_view, 
+                                               std::string const& binary_udf, 
+                                               data_type output_type, 
+                                               column_view const& outcol_view,
+                                               column_view const& outmsk_view,
+                                               rmm::mr::device_memory_resource* mr)
+{
+  rmm::cuda_stream_view stream = rmm::cuda_stream_default;
+  transformation::jit::generalized_operation(data_view, binary_udf, output_type, outcol_view, outmsk_view, mr);
+
+  std::unique_ptr<column> output;
+
+
+  return output;
+}
+
+
+
 }  // namespace detail
 
 std::unique_ptr<column> transform(column_view const& input,
@@ -99,6 +189,16 @@ std::unique_ptr<column> transform(column_view const& input,
 {
   CUDF_FUNC_RANGE();
   return detail::transform(input, unary_udf, output_type, is_ptx, rmm::cuda_stream_default, mr);
+}
+
+std::unique_ptr<column> generalized_masked_op(table_view data_view,
+                                              std::string const& binary_udf, 
+                                              data_type output_type, 
+                                              column_view const& outcol_view,
+                                              column_view const& outmsk_view,
+                                              rmm::mr::device_memory_resource* mr)
+{
+  return detail::generalized_masked_op(data_view, binary_udf, output_type, outcol_view, outmsk_view, mr);
 }
 
 }  // namespace cudf

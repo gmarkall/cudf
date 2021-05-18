@@ -1444,6 +1444,16 @@ class Frame(libcudf.table.Table):
         result._copy_type_metadata(self)
         return result
 
+    def _apply(self, func):
+        output_dtype, ptx = cudf.core.udf.pipeline.compile_udf(func, self.dtypes)
+
+        output_column = cudf.core.column.column_empty(row_count=len(self), dtype=output_dtype)
+        output_mask = cudf.core.column.column_empty(row_count=len(self), dtype='bool')
+
+        result = cudf._lib.transform.masked_udf(self, ptx, output_column, output_mask)
+        return result
+
+
     def rank(
         self,
         axis=0,
@@ -1482,7 +1492,7 @@ class Frame(libcudf.table.Table):
         pct : bool, default False
             Whether or not to display the returned rankings in percentile
             form.
-
+f
         Returns
         -------
         same type as caller
