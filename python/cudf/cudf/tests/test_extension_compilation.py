@@ -53,6 +53,10 @@ def test_compile_arith_masked_vs_constant(op, ty, constant):
 
     assert isinstance(resty, MaskedType)
 
+    # Check that the masked typing matches that of the unmasked typing
+    um_ptx, um_resty = compile_ptx(func, (ty,), cc=cc, device=True)
+    assert resty.value_type == um_resty
+
 
 @pytest.mark.parametrize('op', arith_ops)
 @pytest.mark.parametrize('ty', number_types, ids=number_ids)
