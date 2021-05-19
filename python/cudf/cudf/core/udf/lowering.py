@@ -22,6 +22,15 @@ arith_ops = [
 
 ]
 
+comparison_ops = [
+    operator.eq, 
+    operator.ne,
+    operator.lt,
+    operator.le,
+    operator.gt,
+    operator.ge
+]
+
 @cuda_lowering_registry.lower_constant(NAType)
 def constant_dummy(context, builder, ty, pyval):
     # This handles None, etc.
@@ -76,6 +85,7 @@ def make_arithmetic_op(op):
             )
         return result._getvalue()
     return masked_scalar_op_impl
+
 
 def register_arithmetic_op(op):
     '''
@@ -147,7 +157,7 @@ def register_const_op(op):
 
 
 # register all lowering at init
-for op in arith_ops:
+for op in arith_ops + comparison_ops:
     register_arithmetic_op(op)
     register_const_op(op)
     # null op impl can be shared between all ops
@@ -172,6 +182,19 @@ def masked_scalar_is_null_impl(context, builder, sig, args):
 
     return builder.load(result)
 
+@cuda_lower(operator.truth, MaskedType)
+def masked_scalar_truth_impl(context, builder, sig, args):
+    indata = cgutils.create_struct_proxy(MaskedType(types.boolean))(
+        context, builder, value=args[0]
+    )
+    return indata.value
+
+@cuda_lower(bool, MaskedType)
+def masked_scalar_bool_impl(context, builder, sig, args):
+    indata = cgutils.create_struct_proxy(MaskedType(types.boolean))(
+        context, builder, value=args[0]
+    )
+    return indata.value
 
 # To handle the unification, we need to support casting from any type to an
 # extension type. The cast implementation takes the value passed in and returns
