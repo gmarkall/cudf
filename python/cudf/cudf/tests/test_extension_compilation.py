@@ -4,6 +4,7 @@ import pytest
 from numba import types
 from numba.cuda import compile_ptx
 
+from cudf import NA
 from cudf.core.udf.typing import MaskedType
 
 arith_ops = (
@@ -29,19 +30,68 @@ number_types = (
     types.uint64,
 )
 
+QUICK = True
+
+if QUICK:
+    arith_ops = (operator.add, operator.truediv, operator.pow)
+    number_types = (types.int32, types.float32)
+
+
 number_ids = tuple(str(t) for t in number_types)
 
 
 @pytest.mark.parametrize('op', arith_ops)
 @pytest.mark.parametrize('ty', number_types, ids=number_ids)
 @pytest.mark.parametrize('constant', [1, 1.5])
-def test_arith_masked_vs_constant(op, ty, constant):
+def test_compile_arith_masked_vs_constant(op, ty, constant):
 
     def func(x):
         return op(x, constant)
 
     cc = (7, 5)
-    ptx, resty = compile_ptx(func, (MaskedType(ty),), cc=cc)
+    ptx, resty = compile_ptx(func, (MaskedType(ty),), cc=cc, device=True)
+
+    print(ptx)
+
+    assert isinstance(resty, MaskedType)
+
+
+@pytest.mark.parametrize('op', arith_ops)
+@pytest.mark.parametrize('ty', number_types, ids=number_ids)
+@pytest.mark.parametrize('constant', [1, 1.5])
+def test_compile_arith_constant_vs_masked(op, ty, constant):
+
+    def func(x):
+        return op(constant, x)
+
+    cc = (7, 5)
+    ptx, resty = compile_ptx(func, (MaskedType(ty),), cc=cc, device=True)
+
+    assert isinstance(resty, MaskedType)
+
+
+@pytest.mark.parametrize('op', arith_ops)
+@pytest.mark.parametrize('ty', number_types, ids=number_ids)
+def test_compile_arith_masked_vs_na(op, ty):
+
+    def func(x):
+        return op(x, NA)
+
+    cc = (7, 5)
+    ptx, resty = compile_ptx(func, (MaskedType(ty),), cc=cc, device=True)
+
+    assert isinstance(resty, MaskedType)
+
+
+@pytest.mark.parametrize('op', arith_ops)
+@pytest.mark.parametrize('ty', number_types, ids=number_ids)
+def test_compile_arith_na_vs_masked(op, ty):
+
+    def func(x):
+        return op(x, NA)
+
+    cc = (7, 5)
+    ptx, resty = compile_ptx(func, (MaskedType(ty),), cc=cc, device=True)
 
 
 @pytest.mark.parametrize('op', arith_ops)
@@ -50,7 +100,7 @@ def test_arith_masked_vs_constant(op, ty, constant):
 @pytest.mark.parametrize('masked', ((False, True), (True, False),
                                     (True, True)),
                          ids=('um', 'mu', 'mm'))
-def test_arith_masked_ops(op, ty1, ty2, masked):
+def test_compile_arith_masked_ops(op, ty1, ty2, masked):
 
     def func(x, y):
         return op(x, y)
@@ -62,4 +112,6 @@ def test_arith_masked_ops(op, ty1, ty2, masked):
     if masked[1]:
         ty2 = MaskedType(ty2)
 
-    ptx, resty = compile_ptx(func, (ty1, ty2), cc=cc)
+    ptx, resty = compile_ptx(func, (ty1, ty2), cc=cc, device=True)
+
+    print(ptx)
