@@ -47,11 +47,19 @@ def test_arith_masked_vs_constant(op, ty, constant):
 @pytest.mark.parametrize('op', arith_ops)
 @pytest.mark.parametrize('ty1', number_types, ids=number_ids)
 @pytest.mark.parametrize('ty2', number_types, ids=number_ids)
-def test_arith_masked_ops(op, ty1, ty2):
+@pytest.mark.parametrize('masked', ((False, True), (True, False),
+                                    (True, True)),
+                         ids=('um', 'mu', 'mm'))
+def test_arith_masked_ops(op, ty1, ty2, masked):
 
     def func(x, y):
         return op(x, y)
 
     cc = (7, 5)
-    sig = (MaskedType(ty1), MaskedType(ty2))
-    ptx, resty = compile_ptx(func, sig, cc=cc)
+
+    if masked[0]:
+        ty1 = MaskedType(ty1)
+    if masked[1]:
+        ty2 = MaskedType(ty2)
+
+    ptx, resty = compile_ptx(func, (ty1, ty2), cc=cc)
