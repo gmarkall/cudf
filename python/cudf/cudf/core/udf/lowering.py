@@ -119,15 +119,23 @@ def masked_scalar_null_op_impl(context, builder, sig, args):
     result.valid = context.get_constant(types.boolean, 0)
     return result._getvalue()
 
+
 def make_const_op(op):
     def masked_scalar_const_op_impl(context, builder, sig, input_values):
         '''
         Implement `MaskedType` + constant
         '''
-        masked_type, const_type = sig.args
+        # Which way round are the argument types?
+        if isinstance(sig.args[0], MaskedType):
+            masked_type, const_type = sig.args
+            masked_value, numeric_value = input_values
+        else:
+            const_type, masked_type = sig.args
+            numeric_value, masked_value = input_values
+
         return_type = sig.return_type
         indata = cgutils.create_struct_proxy(MaskedType(masked_type.value_type))(
-            context, builder, value=input_values[0]
+            context, builder, value=masked_value
         )
         result = cgutils.create_struct_proxy(MaskedType(return_type.value_type))(
             context, builder
@@ -136,23 +144,25 @@ def make_const_op(op):
         with builder.if_then(indata.valid):
 
             result.value = context.compile_internal(
-                builder, 
-                lambda x, y: op(x, y), 
+                builder,
+                lambda x, y: op(x, y),
                 nb_signature(
-                    return_type.value_type, 
-                    masked_type.value_type, 
+                    return_type.value_type,
+                    masked_type.value_type,
                     const_type
                 ),
-                (indata.value, input_values[1])
+                (indata.value, numeric_value)
             )
             result.valid = context.get_constant(types.boolean, 1)
 
         return result._getvalue()
     return masked_scalar_const_op_impl
 
+
 def register_const_op(op):
     to_lower_op = make_const_op(op)
     cuda_lower(op, MaskedType, types.Number)(to_lower_op)
+    cuda_lower(op, types.Number, MaskedType)(to_lower_op)
 
 
 # register all lowering at init
