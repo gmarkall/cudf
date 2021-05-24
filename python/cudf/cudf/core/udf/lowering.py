@@ -32,7 +32,7 @@ comparison_ops = [
 ]
 
 @cuda_lowering_registry.lower_constant(NAType)
-def constant_dummy(context, builder, ty, pyval):
+def constant_na(context, builder, ty, pyval):
     # This handles None, etc.
     return context.get_dummy_value()
 
@@ -103,7 +103,6 @@ def register_arithmetic_op(op):
     to_lower_op = make_arithmetic_op(op)
     cuda_lower(op, MaskedType, MaskedType)(to_lower_op)
 
-@cuda_lower(operator.add, MaskedType, NAType)
 def masked_scalar_null_op_impl(context, builder, sig, args):
     '''
     Implement `MaskedType` + `NAType`
@@ -162,7 +161,7 @@ for op in arith_ops + comparison_ops:
     register_const_op(op)
     # null op impl can be shared between all ops
     cuda_lower(op, MaskedType, NAType)(masked_scalar_null_op_impl)
-
+    cuda_lower(op, NAType, MaskedType)(masked_scalar_null_op_impl)
 
 @cuda_lower(operator.is_, MaskedType, NAType)
 def masked_scalar_is_null_impl(context, builder, sig, args):
@@ -208,6 +207,14 @@ def cast_primitive_to_masked(context, builder, fromty, toty, val):
     return ext._getvalue()
 
 
+@cuda_impl_registry.lower_cast(NAType, MaskedType)
+def cast_na_to_masked(context, builder, fromty, toty, val):
+    result = cgutils.create_struct_proxy(toty)(context, builder)
+    result.valid = context.get_constant(types.boolean, 0)
+
+    return result._getvalue()
+
+
 @cuda_impl_registry.lower_cast(MaskedType, MaskedType)
 def cast_masked_to_masked(context, builder, fromty, toty, val):
     operand = cgutils.create_struct_proxy(fromty)(context, builder, value=val)
@@ -217,13 +224,3 @@ def cast_masked_to_masked(context, builder, fromty, toty, val):
     ext.value = casted
     ext.valid = operand.valid
     return ext._getvalue()
-
-
-@cuda_impl_registry.lower_cast(NAType, MaskedType)
-def cast_na_to_masked(context, builder, fromty, toty, val):
-    result = cgutils.create_struct_proxy(toty)(context, builder)
-    result.valid = context.get_constant(types.boolean, 0)
-
-    return result._getvalue()
-
-

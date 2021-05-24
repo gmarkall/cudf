@@ -82,26 +82,29 @@ class MaskedType(types.Type):
                 return x + y
         
         numba now sees this as
-        f(x: MaskedType, y: MaskedType) -> MaskedType OR literal 
+        f(x: MaskedType(dtype_1), y: MaskedType(dtype_2))
+          -> MaskedType(dtype_unified) 
         '''
         
         # If we have Masked and NA, the output should be a 
         # MaskedType with the original type as its value_type
         if isinstance(other, NAType):
-            return MaskedType(self.value_type)
+            return self
 
-        #if isinstance(other, MaskedType):
-        #    return MaskedType(context.unify_pairs(self.value_type,
-        #                                          other.value_type))
-
-        # if we have MaskedType and Literal, the output should be
-        # determined from the MaskedType.value_type (which is a 
-        # primitive type) and other
+        # if we have MaskedType and something that results in a
+        # scalar, unify between the MaskedType's value_type
+        # and that other thing
         unified = context.unify_pairs(self.value_type, other)
         if unified is None:
             return None
 
         return MaskedType(unified)
+    
+    def __eq__(self, other):
+        if not isinstance(other, MaskedType):
+            return False
+
+        return self.value_type == other.value_type
 
 # Tell numba how `MaskedType` is constructed on the backend in terms
 # of primitive things that exist at the LLVM level
@@ -132,9 +135,14 @@ class NAType(types.Type):
         Masked  <-> NA works from above
         Literal <-> NA -> Masked
         '''
-        if isinstance(other, types.abstract.Literal):
-            return MaskedType(other.literal_type)
-
+        if isinstance(other, MaskedType):
+            # bounce to MaskedType.unify
+            return None
+        elif isinstance(other, NAType):
+            # unify {NA, NA} -> NA
+            return self
+        else:
+            return MaskedType(other)
 
 @typeof_impl.register(_NAType)
 def typeof_na(val, c):
@@ -173,8 +181,8 @@ class MaskedScalarArithOp(AbstractTemplate):
             ).return_type
             return nb_signature(
                 MaskedType(return_type),
-                MaskedType(args[0].value_type),
-                MaskedType(args[1].value_type),
+                args[0],
+                args[1],
             )
 
 class MaskedScalarNullOp(AbstractTemplate):
@@ -186,11 +194,16 @@ class MaskedScalarNullOp(AbstractTemplate):
         if isinstance(args[0], MaskedType) and isinstance(args[1], NAType):
             # In the case of op(Masked, NA), the result has the same
             # dtype as the original regardless of what it is
-            return_type = args[0].value_type
             return nb_signature(
-                MaskedType(return_type),
-                MaskedType(args[0].value_type),
+                args[0],
+                args[0],
                 NAType(),
+            )
+        elif isinstance(args[0], NAType) and isinstance(args[1], MaskedType):
+            return nb_signature(
+                args[1],
+                NAType(),
+                args[1]
             )
 
 class MaskedScalarConstOp(AbstractTemplate):
@@ -209,10 +222,22 @@ class MaskedScalarConstOp(AbstractTemplate):
             ).return_type
             return nb_signature(
                 MaskedType(return_type),
-                MaskedType(args[0].value_type),
+                args[0],
                 args[1],
             )
-
+        elif isinstance(args[0], types.Number) and isinstance(
+            args[1], MaskedType
+        ):
+            breakpoint()
+            return_type = self.context.resolve_function_type(
+                self.key, (args[1].value_type, args[0]), kws
+            ).return_type
+            return nb_signature(
+                MaskedType(return_type),
+                args[0],
+                args[1],
+            )
+            
 @cuda_decl_registry.register_global(operator.is_)
 class MaskedScalarIsNull(AbstractTemplate):
     '''
@@ -222,7 +247,7 @@ class MaskedScalarIsNull(AbstractTemplate):
         if isinstance(args[0], MaskedType) and isinstance(args[1], NAType):
             return nb_signature(
                 types.boolean, 
-                MaskedType(args[0].value_type), 
+                args[0], 
                 NAType())
 
 @cuda_decl_registry.register_global(operator.truth)
