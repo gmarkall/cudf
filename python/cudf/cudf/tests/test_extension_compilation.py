@@ -19,6 +19,16 @@ arith_ops = (
     operator.pow,
 )
 
+inplace_ops = (
+    operator.iadd,
+    operator.isub,
+    operator.imul,
+    operator.itruediv,
+    operator.ifloordiv,
+    operator.imod,
+    operator.ipow
+)
+
 comparison_ops = (
     operator.lt,
     operator.le,
@@ -315,3 +325,24 @@ def test_na_scalar_comparisons(fn, ty):
             raise RuntimeError('Unmasked value compared True with NA')
 
     test_kernel[1, 1]()
+
+
+@pytest.mark.xfail
+@pytest.mark.parametrize('ty', number_types, ids=number_ids)
+def test_masked_as_range_bound(ty):
+    def f(x):
+        for i in range(x):
+            pass
+
+    compile_ptx(f, (MaskedType(ty),), device=True)
+
+
+@pytest.mark.xfail
+@pytest.mark.parametrize('op', inplace_ops)
+@pytest.mark.parametrize('xty', number_types, ids=number_ids)
+@pytest.mark.parametrize('yty', number_types, ids=number_ids)
+def test_inplace_ops(op, xty, yty):
+    def f(x, y):
+        op(x, y)
+
+    compile_ptx(f, (MaskedType(xty), MaskedType(yty,)), device=True)
