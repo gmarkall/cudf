@@ -13,8 +13,6 @@ libcudf_bitmask_type = numpy_support.from_dtype(np.dtype("int32"))
 MASK_BITSIZE = np.dtype("int32").itemsize * 8
 precompiled: cachetools.LRUCache = cachetools.LRUCache(maxsize=32)
 
-cuda.jit(device=True)(pack_return)
-
 
 @annotate("NUMBA JIT", color="green", domain="cudf_python")
 def get_udf_return_type(func, dtypes):
