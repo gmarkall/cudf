@@ -178,43 +178,48 @@ def compile_or_get(df, f):
 
     """
 
-    # check to see if we already compiled this function
+    # Check to see if we already compiled this function
     cache_key = (
         *cudautils.make_cache_key(f, tuple(df.dtypes)),
         *(col.mask is None for col in df._data.values()),
     )
-    if precompiled.get(cache_key) is not None:
-        kernel, scalar_return_type = precompiled[cache_key]
-    else:
 
-        numba_return_type = get_udf_return_type(f, df.dtypes)
-        _is_scalar_return = not isinstance(numba_return_type, MaskedType)
-        scalar_return_type = (
-            numba_return_type
-            if _is_scalar_return
-            else numba_return_type.value_type
-        )
+    if cache_key in precompiled:
+        return precompiled[cache_key]
 
-        sig = construct_signature(df, scalar_return_type)
-        f_ = cuda.jit(device=True)(f)
+    # No precompiled version exists - compile a new version
 
-        # Dict of 'local' variables into which `_kernel` is defined
-        local_exec_context = {}
-        global_exec_context = {
-            "f_": f_,
-            "cuda": cuda,
-            "Masked": Masked,
-            "mask_get": mask_get,
-            "pack_return": pack_return,
-        }
-        exec(
-            _define_function(df, scalar_return=_is_scalar_return),
-            global_exec_context,
-            local_exec_context,
-        )
-        # The python function definition representing the kernel
-        _kernel = local_exec_context["_kernel"]
-        kernel = cuda.jit(sig)(_kernel)
-        precompiled[cache_key] = (kernel, scalar_return_type)
+    numba_return_type = get_udf_return_type(f, df.dtypes)
+    _is_scalar_return = not isinstance(numba_return_type, MaskedType)
+    scalar_return_type = (
+        numba_return_type
+        if _is_scalar_return
+        else numba_return_type.value_type
+    )
 
-    return kernel, numpy_support.as_dtype(scalar_return_type)
+    f_ = cuda.jit(device=True)(f)
+
+    # Dict of 'local' variables into which `_kernel` is defined
+    local_exec_context = {}
+    global_exec_context = {
+        "f_": f_,
+        "cuda": cuda,
+        "Masked": Masked,
+        "mask_get": mask_get,
+        "pack_return": pack_return,
+    }
+    exec(
+        _define_function(df, scalar_return=_is_scalar_return),
+        global_exec_context,
+        local_exec_context,
+    )
+
+    # The python function definition representing the kernel
+    sig = construct_signature(df, scalar_return_type)
+    _kernel = local_exec_context["_kernel"]
+    kernel = cuda.jit(sig)(_kernel)
+
+    return_type = numpy_support.as_dtype(scalar_return_type)
+    precompiled[cache_key] = (kernel, return_type)
+
+    return kernel, return_type
