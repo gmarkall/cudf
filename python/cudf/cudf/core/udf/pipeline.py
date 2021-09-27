@@ -130,7 +130,7 @@ masked_input_initializer_template = """\
 def _define_function(df, scalar_return=False):
     # Create argument list for kernel
     input_columns = ", ".join(
-        [f"input_col_{i}" for i in range(len(df.columns))]
+        [f"input_col_{i}" for i in range(len(df._data))]
     )
 
     input_offsets = ", ".join([f"offset_{i}" for i in range(len(df._data))])
