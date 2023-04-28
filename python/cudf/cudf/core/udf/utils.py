@@ -310,6 +310,7 @@ def _compile_or_get(frame, func, args, kernel_getter=None):
 
 def _get_kernel(kernel_string, globals_, sig, func):
     """Template kernel compilation helper function."""
+    print(kernel_string)
     f_ = cuda.jit(device=True)(func)
     globals_["f_"] = f_
     exec(kernel_string, globals_)
@@ -356,7 +357,7 @@ def _get_extensionty_size(ty):
     """
     Return the size of an extension type in bytes
     """
-    data_layout = nvvm.data_layout
+    data_layout = nvvm.NVVM().data_layout
     if isinstance(data_layout, dict):
         data_layout = data_layout[64]
     target_data = ll.create_target_data(data_layout)

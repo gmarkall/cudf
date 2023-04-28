@@ -69,13 +69,15 @@ __device__ void free_wrapper(void* ptr) { free(ptr); }
 /* The Memory System object */
 __device__ NRT_MemSys TheMSys = {
   .allocator = {(NRT_malloc_func)malloc_wrapper, NULL, (NRT_free_func)free_wrapper},
-  .stats     = {0, 0, 0, 0}};
+  .stats     = {false, 0, 0, 0, 0}};
 
 extern "C" __device__ void* NRT_Allocate(size_t size)
 {
   void* ptr = NULL;
-  ptr       = TheMSys.allocator.malloc(size);
-  if (TheMSys.stats.enabled) { TheMSys.stats.alloc++; }
+  //ptr       = malloc(size); 
+  //ptr       = malloc_wrapper(size); 
+  ptr = TheMSys.allocator.malloc(size);
+  //if (TheMSys.stats.enabled) { TheMSys.stats.alloc++; }
   return ptr;
 }
 

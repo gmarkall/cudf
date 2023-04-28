@@ -687,7 +687,12 @@ which manages the lifetime of the udf_string.
 extern "C" __device__ int meminfo_from_new_udf_str(void** nb_retval, void* udf_str)
 {
   // allocate enough room for both the meminfo and udf_string
+  // meminfo_and_str* mi_and_str = new meminfo_and_str;
+  // meminfo_and_str* mi_and_str = (meminfo_and_str*)malloc(sizeof(meminfo_and_str)); 
   meminfo_and_str* mi_and_str = (meminfo_and_str*)NRT_Allocate(sizeof(meminfo_and_str));
+  //printf("%p", mi_and_str);
+  //*nb_retval = (void*)(0xDEADBEEF);
+  
   if (mi_and_str != NULL) {
     auto mi_ptr        = &(mi_and_str->mi);
     udf_string* st_ptr = &(mi_and_str->st);

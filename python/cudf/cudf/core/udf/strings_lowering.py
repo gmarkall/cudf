@@ -132,9 +132,8 @@ def cast_string_literal_to_string_view(context, builder, fromty, toty, val):
 
     # set the empty strview data pointer to point to the literal value
     s = context.insert_const_string(builder.module, fromty.literal_value)
-    sv.data = context.insert_addrspace_conv(
-        builder, s, nvvm.ADDRSPACE_CONSTANT
-    )
+    ty = ir.PointerType(ir.IntType(8))
+    sv.data = builder.addrspacecast(s, ty, 'constant')
     sv.length = context.get_constant(size_type, len(fromty.literal_value))
     sv.bytes = context.get_constant(
         size_type, len(fromty.literal_value.encode("UTF-8"))

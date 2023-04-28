@@ -20,7 +20,7 @@ from cudf.testing._utils import (
     _decimal_series,
     assert_eq,
     parametrize_numeric_dtypes_pairwise,
-    sv_to_udf_str,
+    sv_to_managed_udf_str,
 )
 
 

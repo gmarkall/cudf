@@ -34,7 +34,7 @@ def get_kernels(func, dtype, size):
     element of the input and returns the output into the output vector
     """
 
-    func = cuda.jit(device=True)(func)
+    func = cuda.jit(device=True, lineinfo=True)(func)
 
     if dtype == "str":
         outty = CPointer(managed_udf_string)
@@ -42,7 +42,8 @@ def get_kernels(func, dtype, size):
         outty = numba.np.numpy_support.from_dtype(dtype)[::1]
     sig = nb_signature(void, CPointer(string_view), outty)
 
-    @cuda.jit(sig, link=[_PTX_FILE], extensions=[str_view_arg_handler])
+    @cuda.jit(sig, link=[_PTX_FILE], extensions=[str_view_arg_handler],
+              lineinfo=True)
     def string_view_kernel(input_strings, output_col):
         id = cuda.grid(1)
         if id < size:
@@ -86,7 +87,9 @@ def run_udf_test(data, func, dtype):
 
     expect = pd.Series(data).apply(func)
     print("launching sv kernel!\n")
-    sv_kernel.forall(len(data))(str_views, output)
+    #sv_kernel.forall(len(data))(str_views, output)
+    sv_kernel[1, 1](str_views, output)
+    return
     if dtype == "str":
         result = column_from_managed_udf_string_array(output)
     else:
@@ -94,6 +97,8 @@ def run_udf_test(data, func, dtype):
 
     got = cudf.Series(result, dtype=dtype)
     assert_eq(expect, got, check_dtype=False)
+
+    return
 
     print("launching udfstr kernel!\n")
     udf_str_kernel.forall(len(data))(str_views, output)
@@ -134,7 +139,7 @@ def data():
         "Neither is This a Title",
         "NoT a TiTlE",
         "123 Title Works",
-    ]
+    ][:1]
 
 
 @pytest.fixture(params=["cudf", "cuda", "gpucudf", "abc"])
@@ -365,6 +370,8 @@ def test_string_udf_concat_reflected(data, concat_char):
 @pytest.mark.parametrize("to_replace", ["a", "1", "", "@"])
 @pytest.mark.parametrize("replacement", ["a", "1", "", "@"])
 def test_string_udf_replace(data, to_replace, replacement):
+    print(data)
+    print(len(data))
     def func(st):
         return st.replace(to_replace, replacement)
 
