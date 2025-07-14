@@ -27,4 +27,5 @@ testing
 benchmarking
 options
 cudf_pandas
+string_udf_memory_management
 ```
